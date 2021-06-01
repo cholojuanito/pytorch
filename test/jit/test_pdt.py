@@ -436,3 +436,34 @@ class TestPDT(JitTestCase):
         inp = [1.2, 3.4, 5.6, ]
         scripted_fn = torch.jit._script_pdt(test_script_list, example_inputs=[(inp, ), ])
         self.assertEqual(scripted_fn([-1.8, 20.14, ]), test_script_list([-1.8, 20.14, ]))
+
+    def test_two_nn_modules_scripting_same_function(self):
+        def test_add_fn(x, y):
+            return x + y
+
+        class TestModel1(torch.nn.Module):
+            def init(self):
+                super().__init__()
+
+            def forward(self, a, b):
+                return test_add_fn(a, b)
+
+        class TestModel2(torch.nn.Module):
+            def init(self):
+                super().__init__()
+
+            def forward(self, a, b):
+                return test_add_fn(a, b)
+
+        make_global(TestModel1, TestModel2, test_add_fn)
+        pdt_model_1 = TestModel1()
+        pdt_model_2 = TestModel2()
+
+        scripted_model_1 = torch.jit._script_pdt(pdt_model_1, example_inputs={pdt_model_1: [(10, 20, ), ], })
+        self.assertEqual(scripted_model_1(1004, 5001), pdt_model_1(1004, 5001))
+
+        scripted_model_2 = torch.jit._script_pdt(pdt_model_2, example_inputs={pdt_model_2: [(1.3, 2.5, ), ], })
+        self.assertEqual(scripted_model_2(10.04, 50.01), pdt_model_2(10.04, 50.01))
+
+        # Check again to see if the type annotation for add_fn in scripted_model_1 is preserved
+        self.assertEqual(scripted_model_1(22, 33), pdt_model_1(22, 33))
